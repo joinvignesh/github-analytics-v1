@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: int_github_issues_enriched
+    description: "Issues joined with Repo metadata"
+    columns:
+      - name: issue_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_github_issue_lifecycle
+    description: "Calculated metrics for issue age and resolution time"
+    columns:
+      - name: issue_id
+        tests:
+          - unique
+          - not_null
+      - name: issue_age_in_days
+        tests:
+          - not_null # Every issue must have an age (even if 0)
+
+  - name: int_github_repo_activity
+    description: "Daily aggregate of repo activity"
+    columns:
+      - name: activity_date
+        tests:
+          - not_null

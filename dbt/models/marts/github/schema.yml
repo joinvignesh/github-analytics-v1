@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: dim_repositories
+    description: "Dimension table for Repository attributes"
+    columns:
+      - name: repo_id
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_contributors
+    description: "Dimension table for Authors/Contributors"
+    columns:
+      - name: author_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_issues
+    description: "Fact table containing all issues with calculated lifecycle metrics"
+    columns:
+      - name: issue_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_repo_daily_metrics
+    description: "Daily aggregation of repository activity"
+    columns:
+      - name: activity_date
+        tests:
+          - not_null
+      - name: repo_name
+        tests:
+          - not_null

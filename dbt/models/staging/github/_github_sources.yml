@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: raw
+    database: GITHUB_ANALYTICS_DB
+    schema: RAW
+    tables:
+      - name: github_repositories
+      - name: github_issues
+      - name: github_comments

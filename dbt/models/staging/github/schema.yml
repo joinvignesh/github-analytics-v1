@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_github_repositories
+    description: "Cleaned list of tracked repositories"
+    columns:
+      - name: repo_id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_github_issues
+    description: "Cleaned issues with deduplication logic applied"
+    columns:
+      - name: issue_id
+        tests:
+          - unique
+          - not_null
+      - name: issue_state
+        tests:
+          - accepted_values:
+              # NEW SYNTAX: Nested under arguments
+              arguments: 
+                values: ['open', 'closed']
+
+  - name: stg_github_comments
+    description: "Cleaned comments with deduplication logic applied"
+    columns:
+      - name: comment_id
+        tests:
+          - unique
+          - not_null
