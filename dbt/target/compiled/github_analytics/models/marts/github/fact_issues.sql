@@ -1,7 +1,7 @@
 with issue_lifecycle as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS.int_github_issue_lifecycle
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.int_github_issue_lifecycle
 
 )
 

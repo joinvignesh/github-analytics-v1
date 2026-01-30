@@ -1,7 +1,7 @@
 with issues as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_issues
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_issues
 
 ),
 

@@ -1,5 +1,5 @@
 
-  create or replace   view GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_issues
+  create or replace   view GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_issues
   
   
   

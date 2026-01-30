@@ -4,11 +4,27 @@ import pandas as pd
 import json
 import concurrent.futures
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, text
+
+# 1. Import SQLAlchemy types explicitly
+from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.engine import Engine, Connection 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 from typing import List, Tuple, Optional
+
+# ----------------------------------------------------
+# MONKEYPATCH: Force Pandas to recognize SQLAlchemy 1.4
+# ----------------------------------------------------
+import pandas.io.sql
+import pandas.io.common
+
+def is_sqlalchemy_connectable_patched(con):
+    return isinstance(con, (Engine, Connection))
+
+pandas.io.common.is_sqlalchemy_connectable = is_sqlalchemy_connectable_patched
+pandas.io.sql.is_sqlalchemy_connectable = is_sqlalchemy_connectable_patched
+# ----------------------------------------------------
 
 load_dotenv()
 
@@ -28,7 +44,7 @@ REPOSITORIES: List[Tuple[str, str]] = [
 BASE_URL = "https://api.github.com"
 
 # ----------------------------------------------------
-# 1. ROBUST SESSION (Prevents Connection Drops)
+# 1. ROBUST SESSION
 # ----------------------------------------------------
 def get_github_session():
     session = requests.Session()
@@ -59,13 +75,45 @@ def clean_df_for_snowflake(df: pd.DataFrame) -> pd.DataFrame:
                 lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
             )
             
-    # Handle NaNs and convert timestamps to string if necessary (Snowflake handles ISO strings well)
     return df.where(pd.notnull(df), None)
 
-def get_max_updated_at(engine, table_name: str, owner: str, repo: str) -> Optional[str]:
-    """Checks Snowflake for the last ingested timestamp to enable incremental loading."""
+def align_df_to_table(engine, df: pd.DataFrame, table_name: str, schema="RAW") -> pd.DataFrame:
+    """
+    Drops columns from the DataFrame that do not exist in the Snowflake table.
+    Prevents 'invalid identifier' errors during incremental loads.
+    """
     try:
-        # Check if table exists first
+        inspector = inspect(engine)
+        # Check if table exists (case insensitive check)
+        table_exists = False
+        if inspector.has_table(table_name.lower(), schema=schema.lower()) or \
+           inspector.has_table(table_name.upper(), schema=schema.upper()):
+            table_exists = True
+
+        if not table_exists:
+            return df
+
+        # Get columns from Snowflake (normalize to uppercase)
+        db_columns = [col['name'].upper() for col in inspector.get_columns(table_name, schema=schema)]
+        
+        if not db_columns:
+            return df
+            
+        # Keep only columns that exist in DB
+        available_cols = [c for c in df.columns if c in db_columns]
+        
+        dropped_cols = set(df.columns) - set(available_cols)
+        if dropped_cols:
+            print(f"[{table_name}] ⚠️  Dropping new API columns to match existing table schema: {dropped_cols}")
+            
+        return df[available_cols]
+        
+    except Exception as e:
+        print(f"Warning: Could not align schema for {table_name}: {e}")
+        return df
+
+def get_max_updated_at(engine, table_name: str, owner: str, repo: str) -> Optional[str]:
+    try:
         query_check = text(f"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'RAW' AND TABLE_NAME = '{table_name}'")
         with engine.connect() as conn:
             exists = conn.execute(query_check).scalar()
@@ -73,7 +121,6 @@ def get_max_updated_at(engine, table_name: str, owner: str, repo: str) -> Option
             if not exists:
                 return None
 
-            # Get max updated_at
             query_date = text(f"""
                 SELECT MAX(updated_at) 
                 FROM RAW.{table_name} 
@@ -82,8 +129,6 @@ def get_max_updated_at(engine, table_name: str, owner: str, repo: str) -> Option
             result = conn.execute(query_date, {"owner": owner, "repo": repo}).scalar()
             
             if result:
-                # GitHub expects ISO 8601. Ensure it's formatted correctly.
-                # If result is datetime object, convert to string
                 if isinstance(result, datetime):
                     return result.isoformat()
                 return str(result)
@@ -93,7 +138,6 @@ def get_max_updated_at(engine, table_name: str, owner: str, repo: str) -> Option
         return None
 
 def fetch_pages(session, url, params):
-    """Generator that yields pages of data."""
     while url:
         try:
             response = session.get(url, params=params)
@@ -105,9 +149,8 @@ def fetch_pages(session, url, params):
                 
             yield data
             
-            # Get next page URL
             url = response.links.get("next", {}).get("url")
-            params = None # Clear params after first request as they are in the 'next' URL
+            params = None 
             
         except requests.exceptions.RequestException as e:
             print(f"Error requesting {url}: {e}")
@@ -117,13 +160,8 @@ def fetch_pages(session, url, params):
 # 3. CORE INGESTION LOGIC
 # ----------------------------------------------------
 def ingest_resource(engine, owner: str, repo: str, resource_type: str):
-    """
-    Generic function to ingest Issues or Comments.
-    resource_type: 'issues' or 'issues/comments'
-    """
     session = get_github_session()
     
-    # Determine table name
     if resource_type == "issues":
         table_name = "GITHUB_ISSUES"
         endpoint = f"/repos/{owner}/{repo}/issues"
@@ -133,7 +171,6 @@ def ingest_resource(engine, owner: str, repo: str, resource_type: str):
     else:
         raise ValueError("Unknown resource type")
 
-    # 1. INCREMENTAL CHECK
     since_date = get_max_updated_at(engine, table_name, owner, repo)
     params = {"per_page": 100, "state": "all"}
     
@@ -147,30 +184,36 @@ def ingest_resource(engine, owner: str, repo: str, resource_type: str):
     total_ingested = 0
     url = f"{BASE_URL}{endpoint}"
     
-    # 2. BATCH FETCH AND INSERT
-    # We fetch one page, process it, insert it. This keeps memory usage low.
     for page_data in fetch_pages(session, url, params):
         if not page_data:
             continue
             
         df = pd.json_normalize(page_data)
         
-        # Add Metadata
         df["SOURCE_OWNER"] = owner
         df["SOURCE_REPO"] = repo
         df["ingested_at"] = datetime.now(timezone.utc)
         
-        # Clean
         df = clean_df_for_snowflake(df)
         
-        # Insert
-        # Note: We use 'append' for both initial and incremental. 
-        # For incremental, Snowflake might have duplicates if records updated. 
-        # Standard pattern is to append to RAW, and deduplicate in dbt later.
-        df.to_sql(table_name, engine, schema="RAW", if_exists="append", index=False, chunksize=5000)
+        # Prevent Schema Drift Errors
+        df = align_df_to_table(engine, df, table_name)
         
-        total_ingested += len(df)
-        print(f"[{owner}/{repo}] {resource_type}: Ingested batch of {len(df)} records...")
+        try:
+            df.to_sql(
+                table_name, 
+                con=engine, 
+                schema="RAW", 
+                if_exists="append", 
+                index=False, 
+                chunksize=5000,
+                method="multi"
+            )
+            total_ingested += len(df)
+            print(f"[{owner}/{repo}] {resource_type}: Ingested batch of {len(df)} records...")
+        except Exception as e:
+            print(f"Error inserting batch for {owner}/{repo}: {e}")
+            raise e
 
     print(f"[{owner}/{repo}] Finished {resource_type}. Total: {total_ingested}")
 
@@ -192,12 +235,19 @@ def ingest_repos_metadata(engine):
         df["ingested_at"] = datetime.now(timezone.utc)
         df = clean_df_for_snowflake(df)
         
-        # Always replace repo metadata to keep it fresh
-        with engine.connect() as conn:
+        # FIX: Manually drop the table to bypass Pandas reflection error
+        with engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "RAW"."GITHUB_REPOSITORIES"'))
-            conn.commit()
-            
-        df.to_sql("GITHUB_REPOSITORIES", engine, schema="RAW", if_exists="append", index=False)
+        
+        # Use 'append' instead of 'replace'. Pandas will create the table since we dropped it.
+        df.to_sql(
+            "GITHUB_REPOSITORIES", 
+            con=engine, 
+            schema="RAW", 
+            if_exists="append", 
+            index=False,
+            method="multi"
+        )
         print("Repository metadata updated.")
 
 # ----------------------------------------------------
@@ -206,32 +256,29 @@ def ingest_repos_metadata(engine):
 def main():
     if not GITHUB_TOKEN: raise ValueError("Missing GITHUB_TOKEN")
     
-    # Use connection pooling in SQLAlchemy
     engine = create_engine(WAREHOUSE_CONN_STRING, pool_size=10, max_overflow=20)
     
     start_time = datetime.now()
     print("Starting Optimized GitHub Ingestion...")
 
-    # 1. Update Repo Metadata (Fast, sequential is fine)
+    # 1. Run Metadata Ingestion (Sequential)
     ingest_repos_metadata(engine)
 
-    # 2. Parallel Ingestion for heavy data
-    # We will spin up tasks: 2 Repos * 2 Resources (Issues + Comments) = 4 Parallel Threads
+    # 2. Run Heavy Data Ingestion (Parallel)
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
-        
         for owner, repo in REPOSITORIES:
-            # Task 1: Issues
             futures.append(executor.submit(ingest_resource, engine, owner, repo, "issues"))
-            # Task 2: Comments
             futures.append(executor.submit(ingest_resource, engine, owner, repo, "issues/comments"))
 
-        # Wait for all to complete
+        # Check for exceptions in threads
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
             except Exception as e:
                 print(f"A thread crashed: {e}")
+                # Re-raise to ensure Airflow marks the task as FAILED
+                raise e
 
     duration = datetime.now() - start_time
     print(f"All jobs completed in {duration}.")

@@ -1,7 +1,7 @@
 with issues as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_issues
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_issues
 
 ),
 
@@ -12,7 +12,7 @@ repos as (
         owner_login,
         primary_language,
         repo_full_name -- Useful for URLs/Grouping
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_repositories
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_repositories
 
 ),
 

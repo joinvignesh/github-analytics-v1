@@ -2,7 +2,7 @@
   
     
 
-create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_marts.dim_repositories
+create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.dim_repositories
     
     
     
@@ -25,7 +25,7 @@ create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_marts.dim_reposi
         created_at,
         updated_at
 
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_repositories
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_repositories
 
 )
 

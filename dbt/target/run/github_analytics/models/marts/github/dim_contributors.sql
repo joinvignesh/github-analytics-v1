@@ -2,7 +2,7 @@
   
     
 
-create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_marts.dim_contributors
+create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.dim_contributors
     
     
     
@@ -11,7 +11,7 @@ create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_marts.dim_contri
     select distinct
         author_id,
         author_login
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_issues
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_issues
     where author_id is not null
 
 )

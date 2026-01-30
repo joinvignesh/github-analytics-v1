@@ -30,4 +30,4 @@ models:
     # Config for all models in models/marts (we will build this later)
     marts:
       +materialized: table
-      +schema: marts
+      #+schema: marts

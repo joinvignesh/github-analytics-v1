@@ -1,5 +1,5 @@
 
-  create or replace   view GITHUB_ANALYTICS_DB.ANALYTICS.int_github_repo_activity
+  create or replace   view GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.int_github_repo_activity
   
   
   
@@ -8,7 +8,7 @@
     with issues as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_issues
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_issues
 
 ),
 

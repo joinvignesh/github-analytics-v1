@@ -17,7 +17,7 @@ with repos as (
         created_at,
         updated_at
 
-    from GITHUB_ANALYTICS_DB.ANALYTICS_staging.stg_github_repositories
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS_staging.stg_github_repositories
 
 )
 

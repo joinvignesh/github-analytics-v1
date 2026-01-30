@@ -1,7 +1,7 @@
 with enriched_issues as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS.int_github_issues_enriched
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.int_github_issues_enriched
 
 ),
 

@@ -2,14 +2,14 @@
   
     
 
-create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_marts.fact_repo_daily_metrics
+create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.fact_repo_daily_metrics
     
     
     
     as (with daily_activity as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS.int_github_repo_activity
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.int_github_repo_activity
 
 )
 

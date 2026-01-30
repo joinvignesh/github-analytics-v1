@@ -2,14 +2,14 @@
   
     
 
-create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_marts.fact_issues
+create or replace transient table GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.fact_issues
     
     
     
     as (with issue_lifecycle as (
 
     select *
-    from GITHUB_ANALYTICS_DB.ANALYTICS.int_github_issue_lifecycle
+    from GITHUB_ANALYTICS_DB.ANALYTICS_MARTS.int_github_issue_lifecycle
 
 )
 
